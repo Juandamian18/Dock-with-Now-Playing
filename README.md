@@ -1,30 +1,32 @@
-# Dock (elementary OS) - Version con Now Playing
+# Dock (elementary OS) - Now Playing Edition
 
-Launcher rapido de aplicaciones y conmutador de ventanas para Pantheon, con widget **Now Playing** integrado en el dock.
+[English](README.md) | [Espanol](README.es.md)
 
-## Que es este proyecto
+Fast app launcher and window switcher for Pantheon, with an integrated **Now Playing** widget in the dock.
 
-Este repositorio contiene el dock de elementary OS (Pantheon) compilable desde codigo fuente, con una implementacion de **Now Playing** que permite:
+## What This Project Is
 
-- Ver caratula, titulo y artista de lo que se esta reproduciendo.
-- Controlar `anterior`, `play/pausa` y `siguiente` desde el dock.
-- Usar dos modos visuales: `Normal` (tarjeta completa) y `Minimal` (solo cover con controles en tooltip).
+This repository contains the elementary OS (Pantheon) dock, buildable from source, with a **Now Playing** implementation that lets you:
 
-El widget usa MPRIS, por lo que funciona con reproductores compatibles (por ejemplo Spotify, Rhythmbox, etc.).
+- See album art, title, and artist for currently playing media.
+- Control `previous`, `play/pause`, and `next` directly from the dock.
+- Use two visual modes: `Normal` (full card) and `Minimal` (cover-only with controls in tooltip).
 
-## Capturas
+The widget uses MPRIS, so it works with compatible players (for example Spotify, Rhythmbox, and others).
 
-### Modo Normal
+## Screenshots
+
+### Normal Mode
 
 ![Now Playing normal mode](docs/images/normal-mode.png)
 
-### Modo Minimal
+### Minimal Mode
 
 ![Now Playing minimal mode](docs/images/minimal-mode.png)
 
-## Requisitos
+## Requirements
 
-Para compilar en elementary OS/Ubuntu:
+For elementary OS/Ubuntu builds:
 
 - `meson`
 - `ninja-build`
@@ -36,7 +38,7 @@ Para compilar en elementary OS/Ubuntu:
 - `libx11-dev`
 - `libwayland-dev`
 
-Instalacion de dependencias:
+Install dependencies:
 
 ```bash
 sudo apt update
@@ -46,42 +48,42 @@ sudo apt install -y \
   libsoup-3.0-dev libx11-dev libwayland-dev
 ```
 
-## Instalacion paso a paso (recomendada para probar sin romper el sistema)
+## Step-By-Step Installation (Recommended, User-Local)
 
-### 1. Clonar repositorio
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/elementary/dock.git
 cd dock
 ```
 
-Si ya lo tenes clonado:
+If you already cloned it:
 
 ```bash
 git pull
 ```
 
-### 2. Configurar build
+### 2. Configure build directory
 
 ```bash
 meson setup build --prefix=/usr
 ```
 
-Si la carpeta `build` ya existe:
+If `build` already exists:
 
 ```bash
 meson setup build --reconfigure --prefix=/usr
 ```
 
-### 3. Compilar
+### 3. Build
 
 ```bash
 ninja -C build
 ```
 
-### 4. Instalar esta build solo para tu usuario (recomendado)
+### 4. Install this build only for your user (recommended)
 
-Esto evita tocar binarios del sistema y deja backup automatico:
+This avoids touching system binaries and keeps an automatic backup:
 
 ```bash
 set -euo pipefail
@@ -96,66 +98,66 @@ fi
 install -m 0755 build/src/io.elementary.dock "$HOME/.local/bin/io.elementary.dock"
 ```
 
-### 5. Reiniciar el dock
+### 5. Restart the dock
 
 ```bash
 pkill -f '^io.elementary.dock$' || true
 ```
 
-El proceso se vuelve a iniciar automaticamente.
+The process should auto-start again.
 
-### 6. Verificar que usa tu version local
+### 6. Verify that your local binary is being used
 
 ```bash
 which io.elementary.dock
 ```
 
-Deberia apuntar a:
+Expected output:
 
 ```text
-/home/tu-usuario/.local/bin/io.elementary.dock
+/home/your-user/.local/bin/io.elementary.dock
 ```
 
-## Instalacion global (opcional)
+## Global Installation (Optional)
 
-Si queres instalar en el sistema completo:
+If you want to install system-wide:
 
 ```bash
 sudo ninja -C build install
 pkill -f '^io.elementary.dock$' || true
 ```
 
-Nota: esto sobreescribe el binario instalado por paquetes y puede revertirse en futuras actualizaciones del sistema.
+Note: this overwrites the package-installed binary and may be reverted by system updates.
 
-## Uso de Now Playing
+## Using Now Playing
 
-### Modo Normal
+### Normal Mode
 
-- Se muestra como tarjeta en el dock.
-- Fondo con caratula + overlay oscuro para legibilidad.
-- Controles inline (`anterior`, `play/pausa`, `siguiente`).
+- Shown as a full card in the dock.
+- Album-art background with dark overlay for text readability.
+- Inline controls (`previous`, `play/pause`, `next`).
 
-### Modo Minimal
+### Minimal Mode
 
-- Se muestra solo el cover con tamano de icono.
-- Al hacer hover se abre tooltip con titulo, artista y controles.
-- Para activarlo/desactivarlo: click derecho sobre Now Playing y marcar/desmarcar `Minimal Mode`.
+- Shows only square cover art at icon size.
+- Hover opens tooltip with track info and controls.
+- To enable or disable it: right click on Now Playing and toggle `Minimal Mode`.
 
-### Comportamiento
+### Behavior
 
-- Si no hay reproductor activo compatible, Now Playing se oculta.
-- Si cerras el reproductor, el item desaparece automaticamente.
+- If no compatible media player is active, Now Playing hides itself.
+- If the player closes, the item disappears automatically.
 
-## Volver a la version original
+## Restore Original Dock
 
-### Opcion A: desactivar override local
+### Option A: remove local override
 
 ```bash
 rm -f "$HOME/.local/bin/io.elementary.dock"
 pkill -f '^io.elementary.dock$' || true
 ```
 
-### Opcion B: restaurar backup local
+### Option B: restore latest local backup
 
 ```bash
 latest_backup="$(ls -1t "$HOME/.local/bin/backups"/io.elementary.dock.* 2>/dev/null | head -n1)"
@@ -165,34 +167,34 @@ if [ -n "${latest_backup:-}" ]; then
 fi
 ```
 
-## Desarrollo
+## Development
 
-Compilar en cada cambio:
+Build after changes:
 
 ```bash
 ninja -C build
 ```
 
-Ejecutar tests (si hay definidos en tu entorno):
+Run tests (if your environment includes them):
 
 ```bash
 ninja -C build test
 ```
 
-Lint (igual que CI):
+Lint (same as CI):
 
 ```bash
 io.elementary.vala-lint -d .
 ```
 
-## Estructura relevante
+## Relevant Project Structure
 
-- `src/MediaSystem/NowPlayingItem.vala`: UI y comportamiento de Now Playing.
-- `src/MediaSystem/MediaMonitor.vala`: integracion MPRIS y estado de reproduccion.
-- `src/ItemManager.vala`: integracion del item en layout del dock.
-- `data/Application.css`: estilos del dock y del widget.
-- `data/dock.gschema.xml`: claves de configuracion (incluye modo minimal).
+- `src/MediaSystem/NowPlayingItem.vala`: Now Playing UI and behavior.
+- `src/MediaSystem/MediaMonitor.vala`: MPRIS integration and playback state.
+- `src/ItemManager.vala`: item integration in dock layout.
+- `data/Application.css`: dock and widget styles.
+- `data/dock.gschema.xml`: settings keys (includes minimal mode).
 
-## Licencia
+## License
 
-Este proyecto se distribuye bajo **GPL-3.0**. Ver [LICENSE](LICENSE).
+Distributed under **GPL-3.0**. See [LICENSE](LICENSE).
