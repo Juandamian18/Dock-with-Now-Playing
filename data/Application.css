@@ -29,7 +29,17 @@ dock {
 }
 
 dock-window:not(.reduce-transparency) separator.vertical {
-    border-right-color: alpha(@highlight_color, 0.15);
+    border-right-color: alpha(@highlight_color, 0.3);
+}
+
+separator.vertical {
+    min-width: 1px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.reduce-transparency separator.vertical {
+    border-right-color: alpha(@borders, 0.55);
 }
 
 dock-window {
@@ -175,4 +185,88 @@ backgrounditem .close-button {
 
 .running-indicator:disabled {
     color: @fg_color;
+}
+
+.now-playing-item .icon-group-bin,
+.now-playing-item.running .icon-group-bin,
+.now-playing-item:active .icon-group-bin {
+    border-radius: 10px;
+    background: @base_color;
+    box-shadow:
+        inset 0 1px 0 alpha(white, 0.08),
+        0 0 0 1px alpha(white, 0.08),
+        0 2px 8px alpha(black, 0.28);
+}
+
+.now-playing-item.minimal .icon-group-bin,
+.now-playing-item.minimal.running .icon-group-bin,
+.now-playing-item.minimal:active .icon-group-bin {
+    background: transparent;
+    box-shadow: none;
+}
+
+.now-playing-artwork {
+    border-radius: 10px;
+    background: radial-gradient(circle at 30% 20%, alpha(@selected_bg_color, 0.5), alpha(black, 0.85));
+}
+
+.now-playing-dim {
+    border-radius: 10px;
+    background: linear-gradient(to bottom, alpha(black, 0.35), alpha(black, 0.68));
+}
+
+.now-playing-content {
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+.now-playing-textbox {
+    min-width: 0;
+}
+
+.now-playing-marquee,
+.now-playing-marquee viewport {
+    background: transparent;
+}
+
+.now-playing-title,
+.now-playing-artist {
+    color: white;
+    margin: 0;
+}
+
+.now-playing-title {
+    font-weight: 700;
+    font-size: 0.92em;
+}
+
+.now-playing-artist {
+    opacity: 0.82;
+    font-size: 0.84em;
+}
+
+.now-playing-controls button {
+    min-width: 24px;
+    min-height: 24px;
+    padding: 2px;
+    color: white;
+    -gtk-icon-size: 14px;
+    border-radius: 99px;
+}
+
+.now-playing-controls button:hover {
+    background: alpha(white, 0.16);
+}
+
+.now-playing-controls button:active {
+    background: alpha(white, 0.24);
+}
+
+.now-playing-tooltip-title,
+.now-playing-tooltip-artist {
+    color: @tooltip_fg_color;
+}
+
+.now-playing-tooltip-title {
+    font-weight: 700;
 }

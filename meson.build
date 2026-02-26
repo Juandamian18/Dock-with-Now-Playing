@@ -31,6 +31,7 @@ gtk_x11_dep = dependency('gtk4-x11')
 x11_dep = dependency('x11')
 granite_dep = dependency('granite-7', version: '>=7.7.0')
 adw_dep = dependency('libadwaita-1')
+soup_dep = dependency('libsoup-3.0')
 m_dep = cc.find_library('m')
 wl_client_dep = dependency('wayland-client')
 
@@ -47,6 +48,7 @@ dependencies = [
     x11_dep,
     granite_dep,
     adw_dep,
+    soup_dep,
     m_dep,
     wl_client_dep,
     pantheon_desktop_shell_dep

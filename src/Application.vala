@@ -5,7 +5,12 @@
 
 public class Dock.Application : Gtk.Application {
     public Application () {
-        Object (application_id: "io.elementary.dock");
+        var app_id = Environment.get_variable ("DOCK_APP_ID");
+        if (app_id == null || app_id == "") {
+            app_id = "io.elementary.dock";
+        }
+
+        Object (application_id: app_id);
     }
 
     protected override void startup () {

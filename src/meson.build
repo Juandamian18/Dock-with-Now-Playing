@@ -6,6 +6,8 @@ sources = [
     'ContainerItem.vala',
     'ItemManager.vala',
     'MainWindow.vala',
+    'MediaSystem' / 'MediaMonitor.vala',
+    'MediaSystem' / 'NowPlayingItem.vala',
     'RenderNodeWalker.vala',
     'AppSystem' / 'App.vala',
     'AppSystem' / 'AppSystem.vala',

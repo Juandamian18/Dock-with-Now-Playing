@@ -16,6 +16,7 @@
     private Adw.TimedAnimation resize_animation;
     private GLib.GenericArray<Launcher> launchers; // Only used to keep track of launcher indices
     private BackgroundItem background_item;
+    private NowPlayingItem now_playing_item;
     private GLib.GenericArray<WorkspaceIconGroup> icon_groups; // Only used to keep track of icon group indices
     private DynamicWorkspaceIcon dynamic_workspace_item;
 
@@ -32,6 +33,13 @@
 
         background_item = new BackgroundItem ();
         background_item.apps_appeared.connect (add_item);
+
+        now_playing_item = new NowPlayingItem ();
+        now_playing_item.playback_appeared.connect (add_item);
+        now_playing_item.mode_changed.connect (() => {
+            reposition_items ();
+            queue_resize ();
+        });
 
         icon_groups = new GLib.GenericArray<WorkspaceIconGroup> ();
 
@@ -169,6 +177,7 @@
         map.connect (() => {
             AppSystem.get_default ().load.begin ();
             background_item.load ();
+            now_playing_item.load ();
 #if WORKSPACE_SWITCHER
             WorkspaceSystem.get_default ().load.begin ();
 #endif
@@ -176,40 +185,44 @@
     }
 
     private void reposition_items () {
-        int index = 0;
+        var x = 0;
         foreach (var launcher in launchers) {
-            position_item (launcher, ref index);
+            position_item (launcher, ref x);
         }
 
         if (background_item.has_apps) {
-            position_item (background_item, ref index);
+            position_item (background_item, ref x);
+        }
+
+        if (now_playing_item.has_player) {
+            position_item (now_playing_item, ref x);
         }
 
 #if WORKSPACE_SWITCHER
         var separator_y = (get_launcher_size () - separator.height_request) / 2;
-        move (separator, index * get_launcher_size () - 1, separator_y);
+        move (separator, x - 1, separator_y);
+        // Keep separator above neighboring items so it doesn't get visually covered.
+        separator.insert_before (this, null);
 #endif
 
         foreach (var icon_group in icon_groups) {
-            position_item (icon_group, ref index);
+            position_item (icon_group, ref x);
         }
 
 #if WORKSPACE_SWITCHER
-        position_item (dynamic_workspace_item, ref index);
+        position_item (dynamic_workspace_item, ref x);
 #endif
     }
 
-    private void position_item (BaseItem item, ref int index) {
-        var position = get_launcher_size () * index;
-
+    private void position_item (BaseItem item, ref int x) {
         if (item.parent != this) {
-            put (item, position, 0);
-            item.current_pos = position;
+            put (item, x, 0);
+            item.current_pos = x;
         } else {
-            item.animate_move (position);
+            item.animate_move (x);
         }
 
-        index++;
+        x += get_item_width (item);
     }
 
     private void add_launcher_via_dnd (Launcher launcher, int index) {
@@ -241,7 +254,7 @@
         resize_animation.easing = EASE_OUT_BACK;
         resize_animation.duration = Granite.TRANSITION_DURATION_OPEN;
         resize_animation.value_from = get_width ();
-        resize_animation.value_to = launchers.length * get_launcher_size ();
+        resize_animation.value_to = get_total_width ();
         resize_animation.play ();
     }
 
@@ -267,7 +280,7 @@
         resize_animation.easing = EASE_IN_OUT_QUAD;
         resize_animation.duration = Granite.TRANSITION_DURATION_CLOSE;
         resize_animation.value_from = get_width ();
-        resize_animation.value_to = launchers.length * get_launcher_size ();
+        resize_animation.value_to = get_total_width ();
         resize_animation.play ();
 
         item.revealed_done.disconnect (remove_finish);
@@ -281,7 +294,13 @@
             list = launchers;
         } else if (source is WorkspaceIconGroup) {
             list = icon_groups;
-            offset = (launchers.length + (background_item.has_apps ? 1 : 0)) * get_launcher_size (); // +1 for the background item
+            offset = launchers.length * get_launcher_size ();
+            if (background_item.has_apps) {
+                offset += get_item_width (background_item);
+            }
+            if (now_playing_item.has_player) {
+                offset += get_item_width (now_playing_item);
+            }
         } else {
             warning ("Tried to move neither launcher nor icon group");
             return;
@@ -355,5 +374,39 @@
 
     public static int get_launcher_size () {
         return settings.get_int ("icon-size") + Launcher.PADDING * 2;
+    }
+
+    public int get_content_width () {
+        return get_total_width ();
+    }
+
+    private static int get_item_width (BaseItem item) {
+        if (item is NowPlayingItem) {
+            return ((NowPlayingItem) item).get_dock_width ();
+        }
+
+        return get_launcher_size ();
+    }
+
+    private int get_total_width () {
+        var total = launchers.length * get_launcher_size ();
+
+        if (background_item.has_apps) {
+            total += get_item_width (background_item);
+        }
+
+        if (now_playing_item.has_player) {
+            total += get_item_width (now_playing_item);
+        }
+
+        foreach (var icon_group in icon_groups) {
+            total += get_item_width (icon_group);
+        }
+
+#if WORKSPACE_SWITCHER
+        total += get_item_width (dynamic_workspace_item);
+#endif
+
+        return total;
     }
 }

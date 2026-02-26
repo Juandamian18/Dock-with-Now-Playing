@@ -26,6 +26,12 @@
       <summary>An ordered array of app id's to show as launchers</summary>
       <description>An ordered array of app id's to show as launchers</description>
     </key>
+
+    <key type="b" name="now-playing-minimal-mode">
+      <default>false</default>
+      <summary>Show now playing in minimal mode</summary>
+      <description>When enabled, only the album cover icon is shown in dock and track controls move to the hover tooltip.</description>
+    </key>
   </schema>
   <schema path="/io/elementary/dock/keybindings/" id="io.elementary.dock.keybindings">
     <key type="as" name="launch-dock-1">

@@ -16,6 +16,7 @@ public class Dock.MainWindow : Gtk.ApplicationWindow {
 
     // Matches top margin in Launcher.css
     private const int TOP_MARGIN = 64;
+    private const int MAX_SHADOW_SIZE = 24;
 
     private Settings transparency_settings;
     private static Settings settings = new Settings ("io.elementary.dock");
@@ -112,8 +113,10 @@ public class Dock.MainWindow : Gtk.ApplicationWindow {
         surface.compute_size.connect ((surface, size) => {
             // manually set shadow width since the additional margin we add to avoid icons clipping when
             // bouncing isn't added by default and instead counts to the frame
-            var item_manager_width = ItemManager.get_default ().get_width ();
-            var shadow_size = (surface.width - item_manager_width) / 2;
+            var item_manager = ItemManager.get_default ();
+            var item_manager_width = int.max (item_manager.get_width (), item_manager.get_content_width ());
+            var shadow_size = int.max (0, (surface.width - item_manager_width) / 2);
+            shadow_size = int.min (shadow_size, MAX_SHADOW_SIZE);
             var top_margin = TOP_MARGIN + shadow_size - 1;
             size.set_shadow_width (shadow_size, shadow_size, top_margin, shadow_size);
         });
@@ -121,8 +124,11 @@ public class Dock.MainWindow : Gtk.ApplicationWindow {
         surface.layout.connect ((surface, width, height) => {
             // manually set input region since container's shadow are is the content of the window
             // and it still gets window events
-            var item_manager_width = ItemManager.get_default ().get_width ();
-            var shadow_size = (width - item_manager_width) / 2;
+            var item_manager = ItemManager.get_default ();
+            var item_manager_width = int.max (item_manager.get_width (), item_manager.get_content_width ());
+            item_manager_width = int.min (item_manager_width, width);
+            var shadow_size = int.max (0, (width - item_manager_width) / 2);
+            shadow_size = int.min (shadow_size, MAX_SHADOW_SIZE);
             var top_margin = TOP_MARGIN + shadow_size;
             surface.set_input_region (new Cairo.Region.rectangle ({
                 shadow_size,
