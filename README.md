@@ -11,6 +11,8 @@ This repository contains the elementary OS (Pantheon) dock, buildable from sourc
 - See album art, title, and artist for currently playing media.
 - Control `previous`, `play/pause`, and `next` directly from the dock.
 - Use two visual modes: `Normal` (full card) and `Minimal` (cover-only with controls in tooltip).
+- Show a subtle animated cover effect while media is playing (enabled by default, optional).
+- Show a minimal seek bar/progress indicator and seek directly from the dock (enabled by default, optional).
 
 The widget uses MPRIS, so it works with compatible players (for example Spotify, Rhythmbox, and others).
 
@@ -23,6 +25,14 @@ The widget uses MPRIS, so it works with compatible players (for example Spotify,
 ### Minimal Mode
 
 ![Now Playing minimal mode](docs/images/minimal-mode.png)
+
+### Seek Bar
+
+![Now Playing seek bar](docs/images/seek-bar.png)
+
+### Cover Animation
+
+![Now Playing cover animation](docs/images/animation.gif)
 
 ## Requirements
 
@@ -136,11 +146,12 @@ Note: this overwrites the package-installed binary and may be reverted by system
 - Shown as a full card in the dock.
 - Album-art background with dark overlay for text readability.
 - Inline controls (`previous`, `play/pause`, `next`).
+- Optional inline seek bar (progress + seeking).
 
 ### Minimal Mode
 
 - Shows only square cover art at icon size.
-- Hover opens tooltip with track info and controls.
+- Hover opens tooltip with track info, controls, and optional seek bar.
 
 How to enable it:
 
@@ -153,10 +164,19 @@ How to disable it:
 1. Right click the Now Playing item again.
 2. Click `Minimal Mode` to untoggle it.
 
+### Context Menu Options
+
+Right click the Now Playing item to toggle:
+
+- `Minimal Mode`: cover-only icon + interactive tooltip.
+- `Cover Animation`: subtle automatic cover movement while playing.
+- `Seek Bar`: progress bar and scrubbing controls.
+
 ### Behavior
 
 - If no compatible media player is active, Now Playing hides itself.
 - If the player closes, the item disappears automatically.
+- `Cover Animation` and `Seek Bar` are enabled by default and persisted in settings.
 
 ## Restore Original Dock
 
@@ -203,7 +223,7 @@ io.elementary.vala-lint -d .
 - `src/MediaSystem/MediaMonitor.vala`: MPRIS integration and playback state.
 - `src/ItemManager.vala`: item integration in dock layout.
 - `data/Application.css`: dock and widget styles.
-- `data/dock.gschema.xml`: settings keys (includes minimal mode).
+- `data/dock.gschema.xml`: settings keys (includes minimal mode, cover animation, and seek bar).
 
 ## License
 

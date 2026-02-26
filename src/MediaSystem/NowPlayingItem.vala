@@ -8,6 +8,7 @@ public class Dock.NowPlayingItem : ContainerItem {
     private const string ACTION_PREFIX = ACTION_GROUP_PREFIX + ".";
     private const string MINIMAL_MODE_ACTION = "minimal-mode";
     private const string COVER_ANIMATION_ACTION = "cover-animation";
+    private const string SEEK_BAR_ACTION = "seek-bar";
 
     private const int CONTROLS_WIDTH = 84;
     private const int MINIMAL_TOOLTIP_OFFSET_Y = -8;
@@ -270,6 +271,7 @@ public class Dock.NowPlayingItem : ContainerItem {
 
     public bool minimal_mode { get; set; default = false; }
     public bool cover_animation { get; set; default = true; }
+    public bool seek_bar { get; set; default = true; }
 
     public MediaMonitor monitor { private get; construct; }
 
@@ -294,10 +296,16 @@ public class Dock.NowPlayingItem : ContainerItem {
     private Gtk.Box tooltip_controls;
     private Gtk.Label tooltip_title_label;
     private Gtk.Label tooltip_artist_label;
+    private Gtk.Scale seek_scale;
+    private Gtk.Scale tooltip_seek_scale;
     private Gtk.Popover minimal_hover_popover;
     private bool minimal_hovering_item = false;
     private bool minimal_hovering_popover = false;
     private uint minimal_popdown_timeout_id = 0;
+    private bool seek_ui_updating = false;
+    private bool user_seeking = false;
+    private uint seek_commit_timeout_id = 0;
+    private double pending_seek_fraction = 0.0;
 
     private bool visible_in_dock = false;
     private string? current_art_url = null;
@@ -410,6 +418,20 @@ public class Dock.NowPlayingItem : ContainerItem {
         ((Gtk.Overlay) content_overlay).add_overlay (controls);
         overlay.add_overlay (content_overlay);
 
+        seek_scale = new Gtk.Scale.with_range (HORIZONTAL, 0, 1, 0.001) {
+            draw_value = false,
+            hexpand = true,
+            halign = FILL,
+            valign = END,
+            can_focus = false,
+            margin_start = CONTENT_HORIZONTAL_MARGIN,
+            margin_end = CONTENT_HORIZONTAL_MARGIN,
+            margin_bottom = 1
+        };
+        seek_scale.add_css_class ("now-playing-seek");
+        seek_scale.value_changed.connect (() => on_seek_value_changed (seek_scale));
+        overlay.add_overlay (seek_scale);
+
         child = overlay;
 
         var tooltip_box = new Gtk.Box (VERTICAL, 4) {
@@ -460,8 +482,18 @@ public class Dock.NowPlayingItem : ContainerItem {
         tooltip_controls.append (tooltip_play_pause_button);
         tooltip_controls.append (tooltip_next_button);
 
+        tooltip_seek_scale = new Gtk.Scale.with_range (HORIZONTAL, 0, 1, 0.001) {
+            draw_value = false,
+            hexpand = true,
+            width_request = CARD_WIDTH,
+            can_focus = false
+        };
+        tooltip_seek_scale.add_css_class ("now-playing-seek");
+        tooltip_seek_scale.value_changed.connect (() => on_seek_value_changed (tooltip_seek_scale));
+
         tooltip_box.append (tooltip_title_label);
         tooltip_box.append (tooltip_artist_label);
+        tooltip_box.append (tooltip_seek_scale);
         tooltip_box.append (tooltip_controls);
 
         minimal_hover_popover = new InteractiveTooltipPopover () {
@@ -506,11 +538,13 @@ public class Dock.NowPlayingItem : ContainerItem {
         var action_group = new SimpleActionGroup ();
         action_group.add_action (new PropertyAction (MINIMAL_MODE_ACTION, this, "minimal-mode"));
         action_group.add_action (new PropertyAction (COVER_ANIMATION_ACTION, this, "cover-animation"));
+        action_group.add_action (new PropertyAction (SEEK_BAR_ACTION, this, "seek-bar"));
         insert_action_group (ACTION_GROUP_PREFIX, action_group);
 
         var menu = new Menu ();
         menu.append (_("Minimal Mode"), ACTION_PREFIX + MINIMAL_MODE_ACTION);
         menu.append (_("Cover Animation"), ACTION_PREFIX + COVER_ANIMATION_ACTION);
+        menu.append (_("Seek Bar"), ACTION_PREFIX + SEEK_BAR_ACTION);
         popover_menu = new Gtk.PopoverMenu.from_model (menu) {
             autohide = true,
             position = TOP
@@ -527,8 +561,12 @@ public class Dock.NowPlayingItem : ContainerItem {
         if (dock_settings.settings_schema.has_key ("now-playing-cover-animation")) {
             dock_settings.bind ("now-playing-cover-animation", this, "cover-animation", DEFAULT);
         }
+        if (dock_settings.settings_schema.has_key ("now-playing-seek-bar")) {
+            dock_settings.bind ("now-playing-seek-bar", this, "seek-bar", DEFAULT);
+        }
         notify["minimal-mode"].connect (apply_mode);
         notify["cover-animation"].connect (update_cover_animation);
+        notify["seek-bar"].connect (update_seek_bar_state);
         apply_mode ();
 
         monitor.changed.connect (sync_from_monitor);
@@ -536,6 +574,7 @@ public class Dock.NowPlayingItem : ContainerItem {
 
     ~NowPlayingItem () {
         cancel_minimal_popdown ();
+        cancel_seek_commit ();
         minimal_hover_popover.unparent ();
         minimal_hover_popover.dispose ();
         popover_menu.unparent ();
@@ -587,6 +626,7 @@ public class Dock.NowPlayingItem : ContainerItem {
         }
 
         update_cover_animation ();
+        update_seek_bar_state ();
 
         // Refresh width-request binding transform on ContainerItem.
         notify_property ("icon-size");
@@ -620,9 +660,56 @@ public class Dock.NowPlayingItem : ContainerItem {
         }
     }
 
+    private void on_seek_value_changed (Gtk.Scale source) {
+        if (seek_ui_updating || !seek_bar) {
+            return;
+        }
+
+        user_seeking = true;
+        pending_seek_fraction = source.get_value ();
+
+        seek_ui_updating = true;
+        if (source == seek_scale) {
+            tooltip_seek_scale.set_value (pending_seek_fraction);
+        } else {
+            seek_scale.set_value (pending_seek_fraction);
+        }
+        seek_ui_updating = false;
+
+        schedule_seek_commit ();
+    }
+
+    private void schedule_seek_commit () {
+        cancel_seek_commit ();
+
+        seek_commit_timeout_id = Timeout.add (140, () => {
+            seek_commit_timeout_id = 0;
+
+            if (seek_bar && monitor.can_seek && monitor.length_us > 0) {
+                var target = (int64) ((double) monitor.length_us * pending_seek_fraction);
+                monitor.seek_to (target);
+            }
+
+            user_seeking = false;
+            update_seek_bar_state ();
+            return Source.REMOVE;
+        });
+    }
+
+    private void cancel_seek_commit () {
+        if (seek_commit_timeout_id == 0) {
+            return;
+        }
+
+        Source.remove (seek_commit_timeout_id);
+        seek_commit_timeout_id = 0;
+    }
+
     private void sync_from_monitor () {
         if (!monitor.has_player) {
             update_cover_animation ();
+            user_seeking = false;
+            cancel_seek_commit ();
             tooltip_text = null;
             if (visible_in_dock) {
                 visible_in_dock = false;
@@ -667,6 +754,7 @@ public class Dock.NowPlayingItem : ContainerItem {
         tooltip_previous_button.sensitive = monitor.can_go_previous;
         tooltip_next_button.sensitive = monitor.can_go_next;
         update_cover_animation ();
+        update_seek_bar_state ();
 
         set_artwork (monitor.art_url);
 
@@ -678,6 +766,41 @@ public class Dock.NowPlayingItem : ContainerItem {
 
     private void update_cover_animation () {
         cover.animate_playback = !minimal_mode && cover_animation && monitor.is_playing;
+    }
+
+    private void update_seek_bar_state () {
+        var show_inline_seek = !minimal_mode && seek_bar;
+        seek_scale.visible = show_inline_seek;
+        tooltip_seek_scale.visible = minimal_mode && seek_bar;
+
+        var can_seek_now = seek_bar && monitor.can_seek && monitor.length_us > 0;
+        seek_scale.sensitive = can_seek_now && !minimal_mode;
+        tooltip_seek_scale.sensitive = can_seek_now && minimal_mode;
+
+        // Keep text and controls optically centered when the inline seek bar is hidden.
+        if (show_inline_seek) {
+            content_overlay.margin_top = 2;
+            content_overlay.margin_bottom = 8;
+        } else {
+            content_overlay.margin_top = 4;
+            content_overlay.margin_bottom = 4;
+        }
+
+        if (user_seeking || monitor.length_us <= 0) {
+            return;
+        }
+
+        var fraction = ((double) monitor.position_us / (double) monitor.length_us);
+        if (fraction < 0.0) {
+            fraction = 0.0;
+        } else if (fraction > 1.0) {
+            fraction = 1.0;
+        }
+
+        seek_ui_updating = true;
+        seek_scale.set_value (fraction);
+        tooltip_seek_scale.set_value (fraction);
+        seek_ui_updating = false;
     }
 
     private void set_artwork (string? art_url) {

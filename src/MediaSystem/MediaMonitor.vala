@@ -35,6 +35,9 @@ private interface MprisPlayer : Object {
 
     [DBus (name = "Previous")]
     public abstract async void previous () throws GLib.Error;
+
+    [DBus (name = "Seek")]
+    public abstract async void seek (int64 offset) throws GLib.Error;
 }
 
 public class Dock.MediaMonitor : Object {
@@ -47,10 +50,14 @@ public class Dock.MediaMonitor : Object {
         public string? title { get; set; default = null; }
         public string? artist { get; set; default = null; }
         public string? art_url { get; set; default = null; }
+        public string? track_id { get; set; default = null; }
         public bool can_play { get; set; default = false; }
         public bool can_pause { get; set; default = false; }
         public bool can_go_next { get; set; default = false; }
         public bool can_go_previous { get; set; default = false; }
+        public bool can_seek { get; set; default = false; }
+        public int64 position_us { get; set; default = 0; }
+        public int64 length_us { get; set; default = 0; }
 
         public PlayerState (string bus_name, FreedesktopProperties properties, MprisPlayer player) {
             Object (bus_name: bus_name, properties: properties, player: player);
@@ -76,10 +83,15 @@ public class Dock.MediaMonitor : Object {
     public bool can_play_pause { get; private set; default = false; }
     public bool can_go_next { get; private set; default = false; }
     public bool can_go_previous { get; private set; default = false; }
+    public bool can_seek { get; private set; default = false; }
+    public int64 position_us { get; private set; default = 0; }
+    public int64 length_us { get; private set; default = 0; }
 
     private FreedesktopDBus? bus_proxy;
     private GLib.HashTable<string, PlayerState> players;
     private string? active_player;
+    private uint position_tick_id = 0;
+    private int64 position_tick_last_us = 0;
 
     construct {
         players = new GLib.HashTable<string, PlayerState> (str_hash, str_equal);
@@ -109,10 +121,16 @@ public class Dock.MediaMonitor : Object {
             return;
         }
 
-        unowned var player = players[active_player].player;
+        var bus_name = active_player;
+        unowned var player = players[bus_name].player;
         player.next.begin ((obj, res) => {
             try {
                 player.next.end (res);
+                if (bus_name != null && bus_name in players) {
+                    unowned var state = players[bus_name];
+                    state.position_us = 0;
+                    publish_player (state);
+                }
             } catch (Error e) {
                 warning ("Failed to skip to next track: %s", e.message);
             }
@@ -124,12 +142,46 @@ public class Dock.MediaMonitor : Object {
             return;
         }
 
-        unowned var player = players[active_player].player;
+        var bus_name = active_player;
+        unowned var player = players[bus_name].player;
         player.previous.begin ((obj, res) => {
             try {
                 player.previous.end (res);
+                if (bus_name != null && bus_name in players) {
+                    unowned var state = players[bus_name];
+                    state.position_us = 0;
+                    publish_player (state);
+                }
             } catch (Error e) {
                 warning ("Failed to go to previous track: %s", e.message);
+            }
+        });
+    }
+
+    public void seek_to (int64 target_position_us) {
+        if (active_player == null || !(active_player in players)) {
+            return;
+        }
+
+        unowned var state = players[active_player];
+        if (!state.can_seek || state.length_us <= 0) {
+            return;
+        }
+
+        var clamped_target = clamp_position (target_position_us, state.length_us);
+        var offset = clamped_target - state.position_us;
+        if (Math.fabs ((double) offset) < 100000.0) {
+            return;
+        }
+
+        unowned var player = state.player;
+        player.seek.begin (offset, (obj, res) => {
+            try {
+                player.seek.end (res);
+                state.position_us = clamped_target;
+                publish_player (state);
+            } catch (Error e) {
+                warning ("Failed to seek: %s", e.message);
             }
         });
     }
@@ -261,12 +313,32 @@ public class Dock.MediaMonitor : Object {
             state.can_go_previous = false;
         }
 
+        if ("CanSeek" in changed_properties) {
+            state.can_seek = (bool) changed_properties["CanSeek"];
+        } else if ("CanSeek" in invalidated_properties) {
+            state.can_seek = false;
+        }
+
+        if ("Position" in changed_properties) {
+            state.position_us = (int64) changed_properties["Position"];
+        } else if ("Position" in invalidated_properties) {
+            state.position_us = 0;
+        }
+
         if ("Metadata" in changed_properties) {
+            var previous_track_id = state.track_id;
             parse_metadata (state, changed_properties["Metadata"]);
+            if (state.track_id != previous_track_id && !("Position" in changed_properties)) {
+                state.position_us = 0;
+            }
+            state.position_us = clamp_position (state.position_us, state.length_us);
         } else if ("Metadata" in invalidated_properties) {
             state.title = null;
             state.artist = null;
             state.art_url = null;
+            state.track_id = null;
+            state.length_us = 0;
+            state.position_us = 0;
         }
     }
 
@@ -274,6 +346,8 @@ public class Dock.MediaMonitor : Object {
         state.title = lookup_string (metadata, "xesam:title");
         state.artist = lookup_first_string (metadata, "xesam:artist");
         state.art_url = lookup_string (metadata, "mpris:artUrl");
+        state.track_id = lookup_track_id (metadata);
+        state.length_us = lookup_int64 (metadata, "mpris:length");
     }
 
     private static string? lookup_string (GLib.Variant dict, string key) {
@@ -297,6 +371,37 @@ public class Dock.MediaMonitor : Object {
         }
 
         return strv[0];
+    }
+
+    private static int64 lookup_int64 (GLib.Variant dict, string key) {
+        var value = dict.lookup_value (key, null);
+        if (value == null) {
+            return 0;
+        }
+
+        if (value.is_of_type (VariantType.INT64)) {
+            return value.get_int64 ();
+        }
+
+        if (value.is_of_type (VariantType.UINT64)) {
+            return (int64) value.get_uint64 ();
+        }
+
+        return 0;
+    }
+
+    private static string? lookup_track_id (GLib.Variant dict) {
+        var value = dict.lookup_value ("mpris:trackid", null);
+        if (value == null) {
+            return null;
+        }
+
+        if (value.is_of_type (VariantType.STRING) ||
+            value.is_of_type (new VariantType ("o"))) {
+            return value.get_string ();
+        }
+
+        return null;
     }
 
     private void refresh_active_player () {
@@ -343,6 +448,10 @@ public class Dock.MediaMonitor : Object {
             can_play_pause = false;
             can_go_next = false;
             can_go_previous = false;
+            can_seek = false;
+            position_us = 0;
+            length_us = 0;
+            stop_position_tick ();
             changed ();
             return;
         }
@@ -357,6 +466,65 @@ public class Dock.MediaMonitor : Object {
         can_play_pause = player.can_play || player.can_pause || player.playback_status != "Stopped";
         can_go_next = player.can_go_next;
         can_go_previous = player.can_go_previous;
+        can_seek = player.can_seek && player.length_us > 0;
+        length_us = player.length_us;
+        position_us = clamp_position (player.position_us, player.length_us);
+        player.position_us = position_us;
+        update_position_tick ();
         changed ();
+    }
+
+    private static int64 clamp_position (int64 position, int64 length) {
+        if (position < 0) {
+            return 0;
+        }
+
+        if (length > 0 && position > length) {
+            return length;
+        }
+
+        return position;
+    }
+
+    private void update_position_tick () {
+        if (active_player == null || !(active_player in players) || !is_playing || !can_seek || length_us <= 0) {
+            stop_position_tick ();
+            return;
+        }
+
+        if (position_tick_id > 0) {
+            return;
+        }
+
+        position_tick_last_us = get_monotonic_time ();
+        position_tick_id = Timeout.add (250, () => {
+            if (active_player == null || !(active_player in players) || !is_playing || !can_seek || length_us <= 0) {
+                stop_position_tick ();
+                return Source.REMOVE;
+            }
+
+            var now_us = get_monotonic_time ();
+            var delta_us = now_us - position_tick_last_us;
+            position_tick_last_us = now_us;
+
+            if (delta_us > 0) {
+                unowned var state = players[active_player];
+                state.position_us = clamp_position (state.position_us + delta_us, state.length_us);
+                position_us = state.position_us;
+                changed ();
+            }
+
+            return Source.CONTINUE;
+        });
+    }
+
+    private void stop_position_tick () {
+        if (position_tick_id == 0) {
+            return;
+        }
+
+        Source.remove (position_tick_id);
+        position_tick_id = 0;
+        position_tick_last_us = 0;
     }
 }

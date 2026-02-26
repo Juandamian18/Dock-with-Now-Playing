@@ -11,6 +11,8 @@ Este repositorio contiene el dock de elementary OS (Pantheon) compilable desde c
 - Ver caratula, titulo y artista de lo que se esta reproduciendo.
 - Controlar `anterior`, `play/pausa` y `siguiente` desde el dock.
 - Usar dos modos visuales: `Normal` (tarjeta completa) y `Minimal` (solo cover con controles en tooltip).
+- Mostrar una animacion sutil de la caratula mientras hay reproduccion (activa por defecto, opcional).
+- Mostrar una seek bar/progreso minima y hacer seek directamente desde el dock (activa por defecto, opcional).
 
 El widget usa MPRIS, por lo que funciona con reproductores compatibles (por ejemplo Spotify, Rhythmbox, etc.).
 
@@ -23,6 +25,14 @@ El widget usa MPRIS, por lo que funciona con reproductores compatibles (por ejem
 ### Modo Minimal
 
 ![Now Playing minimal mode](docs/images/minimal-mode.png)
+
+### Seek Bar
+
+![Now Playing seek bar](docs/images/seek-bar.png)
+
+### Animacion de caratula
+
+![Now Playing cover animation](docs/images/animation.gif)
 
 ## Requisitos
 
@@ -136,11 +146,12 @@ Nota: esto sobreescribe el binario instalado por paquetes y puede revertirse en 
 - Se muestra como tarjeta en el dock.
 - Fondo con caratula + overlay oscuro para legibilidad.
 - Controles inline (`anterior`, `play/pausa`, `siguiente`).
+- Seek bar inline opcional (progreso + control de posicion).
 
 ### Modo Minimal
 
 - Se muestra solo el cover con tamano de icono.
-- Al hacer hover se abre tooltip con titulo, artista y controles.
+- Al hacer hover se abre tooltip con titulo, artista, controles y seek bar opcional.
 
 Como activarlo:
 
@@ -153,10 +164,19 @@ Como desactivarlo:
 1. Haz click derecho nuevamente sobre el item de Now Playing.
 2. Haz click en `Minimal Mode` para desmarcarlo.
 
+### Opciones del menu contextual
+
+Haz click derecho en el item de Now Playing para activar/desactivar:
+
+- `Minimal Mode`: solo cover en el dock + tooltip interactivo.
+- `Cover Animation`: movimiento sutil automatico de la caratula mientras reproduce.
+- `Seek Bar`: barra de progreso y control de posicion.
+
 ### Comportamiento
 
 - Si no hay reproductor activo compatible, Now Playing se oculta.
 - Si cerras el reproductor, el item desaparece automaticamente.
+- `Cover Animation` y `Seek Bar` vienen activas por defecto y persisten en configuracion.
 
 ## Volver a la version original
 
@@ -203,7 +223,7 @@ io.elementary.vala-lint -d .
 - `src/MediaSystem/MediaMonitor.vala`: integracion MPRIS y estado de reproduccion.
 - `src/ItemManager.vala`: integracion del item en layout del dock.
 - `data/Application.css`: estilos del dock y del widget.
-- `data/dock.gschema.xml`: claves de configuracion (incluye modo minimal).
+- `data/dock.gschema.xml`: claves de configuracion (incluye modo minimal, cover animation y seek bar).
 
 ## Licencia
 

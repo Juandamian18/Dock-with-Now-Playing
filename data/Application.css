@@ -221,11 +221,6 @@ backgrounditem .close-button {
         inset 0 0 24px alpha(black, 0.28);
 }
 
-.now-playing-content {
-    margin-top: 4px;
-    margin-bottom: 4px;
-}
-
 .now-playing-textbox {
     min-width: 0;
 }
@@ -268,6 +263,33 @@ backgrounditem .close-button {
     background: alpha(white, 0.24);
 }
 
+.now-playing-seek {
+    min-height: 12px;
+    padding: 0;
+}
+
+.now-playing-seek trough {
+    min-height: 3px;
+    border: none;
+    border-radius: 99px;
+    background: alpha(white, 0.1);
+}
+
+.now-playing-seek highlight {
+    min-height: 3px;
+    border-radius: 99px;
+    background: alpha(white, 0.62);
+}
+
+.now-playing-seek slider {
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
 .now-playing-tooltip-title,
 .now-playing-tooltip-artist {
     color: @tooltip_fg_color;
@@ -287,4 +309,12 @@ backgrounditem .close-button {
 
 .now-playing-tooltip .now-playing-controls button:active {
     background: alpha(@tooltip_fg_color, 0.2);
+}
+
+.now-playing-tooltip .now-playing-seek trough {
+    background: alpha(@tooltip_fg_color, 0.12);
+}
+
+.now-playing-tooltip .now-playing-seek highlight {
+    background: alpha(@tooltip_fg_color, 0.62);
 }

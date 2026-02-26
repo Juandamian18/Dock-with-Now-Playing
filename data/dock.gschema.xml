@@ -38,6 +38,12 @@
       <summary>Animate now playing cover art</summary>
       <description>When enabled, the now playing cover artwork has a subtle motion effect while music is playing.</description>
     </key>
+
+    <key type="b" name="now-playing-seek-bar">
+      <default>true</default>
+      <summary>Show now playing seek bar</summary>
+      <description>When enabled, a subtle seek bar is shown for now playing and can be used to seek through the current track.</description>
+    </key>
   </schema>
   <schema path="/io/elementary/dock/keybindings/" id="io.elementary.dock.keybindings">
     <key type="as" name="launch-dock-1">
