@@ -310,6 +310,7 @@ public class Dock.NowPlayingItem : ContainerItem {
     private bool visible_in_dock = false;
     private string? current_art_url = null;
     private uint artwork_request_serial = 0;
+    private uint artwork_refresh_tick_id = 0;
 
     private static Soup.Session soup_session;
     private Gdk.Paintable fallback_artwork;
@@ -575,6 +576,7 @@ public class Dock.NowPlayingItem : ContainerItem {
     ~NowPlayingItem () {
         cancel_minimal_popdown ();
         cancel_seek_commit ();
+        cancel_artwork_refresh ();
         minimal_hover_popover.unparent ();
         minimal_hover_popover.dispose ();
         popover_menu.unparent ();
@@ -710,6 +712,7 @@ public class Dock.NowPlayingItem : ContainerItem {
             update_cover_animation ();
             user_seeking = false;
             cancel_seek_commit ();
+            cancel_artwork_refresh ();
             tooltip_text = null;
             if (visible_in_dock) {
                 visible_in_dock = false;
@@ -761,6 +764,7 @@ public class Dock.NowPlayingItem : ContainerItem {
         if (!visible_in_dock) {
             visible_in_dock = true;
             playback_appeared ();
+            schedule_artwork_refresh ();
         }
     }
 
@@ -805,6 +809,9 @@ public class Dock.NowPlayingItem : ContainerItem {
 
     private void set_artwork (string? art_url) {
         if (art_url == current_art_url) {
+            // On first appearance/reappearance the widget can briefly keep a stale snapshot
+            // until the next pointer-driven redraw. Force a frame refresh in that case.
+            schedule_artwork_refresh ();
             return;
         }
 
@@ -830,10 +837,12 @@ public class Dock.NowPlayingItem : ContainerItem {
 
         if (paintable != null) {
             cover.paintable = paintable;
+            schedule_artwork_refresh ();
             return;
         }
 
         cover.paintable = fallback_artwork;
+        schedule_artwork_refresh ();
     }
 
     private async void load_remote_artwork (string art_url, uint request_serial) {
@@ -847,6 +856,7 @@ public class Dock.NowPlayingItem : ContainerItem {
 
             var texture = Gdk.Texture.from_bytes (bytes);
             cover.paintable = texture;
+            schedule_artwork_refresh ();
         } catch (Error e) {
             if (request_serial != artwork_request_serial || art_url != current_art_url) {
                 return;
@@ -854,6 +864,31 @@ public class Dock.NowPlayingItem : ContainerItem {
 
             debug ("Couldn't download artwork '%s': %s", art_url, e.message);
             cover.paintable = fallback_artwork;
+            schedule_artwork_refresh ();
         }
+    }
+
+    private void schedule_artwork_refresh () {
+        if (artwork_refresh_tick_id != 0) {
+            return;
+        }
+
+        artwork_refresh_tick_id = add_tick_callback ((widget, frame_clock) => {
+            artwork_refresh_tick_id = 0;
+            cover.queue_resize ();
+            cover.queue_draw ();
+            dim_overlay.queue_draw ();
+            queue_draw ();
+            return Source.REMOVE;
+        });
+    }
+
+    private void cancel_artwork_refresh () {
+        if (artwork_refresh_tick_id == 0) {
+            return;
+        }
+
+        remove_tick_callback (artwork_refresh_tick_id);
+        artwork_refresh_tick_id = 0;
     }
 }
