@@ -301,6 +301,7 @@ public class Dock.NowPlayingItem : ContainerItem {
     private Gtk.Popover minimal_hover_popover;
     private bool minimal_hovering_item = false;
     private bool minimal_hovering_popover = false;
+    private bool minimal_hover_blocked = false;
     private uint minimal_popdown_timeout_id = 0;
     private bool seek_ui_updating = false;
     private bool user_seeking = false;
@@ -528,7 +529,7 @@ public class Dock.NowPlayingItem : ContainerItem {
         var minimal_item_motion = new Gtk.EventControllerMotion ();
         add_controller (minimal_item_motion);
         minimal_item_motion.enter.connect (() => {
-            if (!minimal_mode) {
+            if (!minimal_mode || minimal_hover_blocked) {
                 return;
             }
 
@@ -571,6 +572,9 @@ public class Dock.NowPlayingItem : ContainerItem {
         };
         popover_menu.set_offset (0, -1);
         popover_menu.set_parent (this);
+        popover_menu.closed.connect (() => {
+            minimal_hover_blocked = false;
+        });
 
         gesture_click.button = 0;
         gesture_click.released.connect (on_click_released);
@@ -616,6 +620,10 @@ public class Dock.NowPlayingItem : ContainerItem {
                 monitor.play_pause ();
                 break;
             case Gdk.BUTTON_SECONDARY:
+                minimal_hover_blocked = true;
+                minimal_hovering_item = false;
+                minimal_hovering_popover = false;
+                cancel_minimal_popdown ();
                 minimal_hover_popover.popdown ();
                 popover_menu.popup ();
                 popover_tooltip.popdown ();
@@ -656,6 +664,10 @@ public class Dock.NowPlayingItem : ContainerItem {
     }
 
     private void show_minimal_hover_popover () {
+        if (minimal_hover_blocked || popover_menu.visible) {
+            return;
+        }
+
         cancel_minimal_popdown ();
         minimal_hover_popover.popup ();
     }
