@@ -616,6 +616,15 @@ public class Dock.NowPlayingItem : ContainerItem {
 
     private void on_click_released (int n_press, double x, double y) {
         switch (gesture_click.get_current_button ()) {
+            case Gdk.BUTTON_PRIMARY:
+                if (clicked_interactive_widget (x, y)) {
+                    break;
+                }
+
+                if (n_press == 1) {
+                    monitor.toggle_player_app_visibility ();
+                }
+                break;
             case Gdk.BUTTON_MIDDLE:
                 monitor.play_pause ();
                 break;
@@ -629,6 +638,19 @@ public class Dock.NowPlayingItem : ContainerItem {
                 popover_tooltip.popdown ();
                 break;
         }
+    }
+
+    private bool clicked_interactive_widget (double x, double y) {
+        Gtk.Widget? target = pick (x, y, Gtk.PickFlags.DEFAULT);
+        while (target != null && target != this) {
+            if (target is Gtk.Button || target is Gtk.Scale) {
+                return true;
+            }
+
+            target = target.get_parent ();
+        }
+
+        return false;
     }
 
     private void apply_mode () {

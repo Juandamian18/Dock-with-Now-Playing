@@ -43,17 +43,26 @@ private interface MprisPlayer : Object {
     public abstract async void seek (int64 offset) throws GLib.Error;
 }
 
+[DBus (name = "org.mpris.MediaPlayer2")]
+private interface MprisRoot : Object {
+    [DBus (name = "Raise")]
+    public abstract async void raise () throws GLib.Error;
+}
+
 public class Dock.MediaMonitor : Object {
     private class PlayerState : Object {
         public string bus_name { get; construct; }
         public FreedesktopProperties properties { get; construct; }
         public MprisPlayer player { get; construct; }
+        public MprisRoot root { get; construct; }
 
         public string playback_status { get; set; default = "Stopped"; }
         public string? title { get; set; default = null; }
         public string? artist { get; set; default = null; }
         public string? art_url { get; set; default = null; }
         public string? track_id { get; set; default = null; }
+        public string? desktop_entry { get; set; default = null; }
+        public bool can_raise { get; set; default = false; }
         public bool can_play { get; set; default = false; }
         public bool can_pause { get; set; default = false; }
         public bool can_go_next { get; set; default = false; }
@@ -64,13 +73,14 @@ public class Dock.MediaMonitor : Object {
         public bool has_position { get; set; default = false; }
         public bool position_refresh_in_flight { get; set; default = false; }
 
-        public PlayerState (string bus_name, FreedesktopProperties properties, MprisPlayer player) {
-            Object (bus_name: bus_name, properties: properties, player: player);
+        public PlayerState (string bus_name, FreedesktopProperties properties, MprisPlayer player, MprisRoot root) {
+            Object (bus_name: bus_name, properties: properties, player: player, root: root);
         }
     }
 
     private const string MPRIS_PREFIX = "org.mpris.MediaPlayer2.";
     private const string MPRIS_PATH = "/org/mpris/MediaPlayer2";
+    private const string MPRIS_ROOT_IFACE = "org.mpris.MediaPlayer2";
     private const string MPRIS_PLAYER_IFACE = "org.mpris.MediaPlayer2.Player";
 
     public signal void changed ();
@@ -194,6 +204,45 @@ public class Dock.MediaMonitor : Object {
         });
     }
 
+    public void activate_player_app () {
+        if (active_player == null || !(active_player in players)) {
+            return;
+        }
+
+        unowned var state = players[active_player];
+        var desktop_id = resolve_desktop_id (state);
+        if (focus_existing_player_window (state)) {
+            return;
+        }
+
+        if (state.can_raise) {
+            state.root.raise.begin ((obj, res) => {
+                try {
+                    state.root.raise.end (res);
+                } catch (Error e) {
+                    debug ("Couldn't raise player %s: %s", state.bus_name, e.message);
+                    launch_player_from_desktop_id (desktop_id, state);
+                }
+            });
+            return;
+        }
+
+        launch_player_from_desktop_id (desktop_id, state);
+    }
+
+    public void toggle_player_app_visibility () {
+        if (active_player == null || !(active_player in players)) {
+            return;
+        }
+
+        unowned var state = players[active_player];
+        if (hide_player_windows (state)) {
+            return;
+        }
+
+        activate_player_app ();
+    }
+
     private async void connect_to_dbus () {
         if (bus_proxy != null) {
             return;
@@ -252,22 +301,30 @@ public class Dock.MediaMonitor : Object {
         try {
             var properties = yield Bus.get_proxy<FreedesktopProperties> (SESSION, bus_name, MPRIS_PATH);
             var player = yield Bus.get_proxy<MprisPlayer> (SESSION, bus_name, MPRIS_PATH);
+            var root = yield Bus.get_proxy<MprisRoot> (SESSION, bus_name, MPRIS_PATH);
 
-            var state = new PlayerState (bus_name, properties, player);
+            var state = new PlayerState (bus_name, properties, player, root);
             players[bus_name] = state;
 
             properties.properties_changed.connect ((iface, changed_properties, invalidated_properties) => {
-                if (iface != MPRIS_PLAYER_IFACE) {
+                if (iface == MPRIS_PLAYER_IFACE) {
+                    update_player_state (state, changed_properties, invalidated_properties);
+                    ensure_player_position (state);
+                    refresh_active_player ();
                     return;
                 }
 
-                update_player_state (state, changed_properties, invalidated_properties);
-                ensure_player_position (state);
-                refresh_active_player ();
+                if (iface == MPRIS_ROOT_IFACE) {
+                    update_root_state (state, changed_properties, invalidated_properties);
+                }
             });
 
-            var props = yield properties.get_all (MPRIS_PLAYER_IFACE);
-            update_player_state (state, props, {});
+            var player_props = yield properties.get_all (MPRIS_PLAYER_IFACE);
+            update_player_state (state, player_props, {});
+
+            var root_props = yield properties.get_all (MPRIS_ROOT_IFACE);
+            update_root_state (state, root_props, {});
+
             ensure_player_position (state);
             refresh_active_player ();
         } catch (Error e) {
@@ -364,6 +421,224 @@ public class Dock.MediaMonitor : Object {
         state.art_url = lookup_string (metadata, "mpris:artUrl");
         state.track_id = lookup_track_id (metadata);
         state.length_us = lookup_int64 (metadata, "mpris:length");
+    }
+
+    private static void update_root_state (
+        PlayerState state,
+        GLib.HashTable<string, GLib.Variant> changed_properties,
+        string[] invalidated_properties
+    ) {
+        if ("DesktopEntry" in changed_properties) {
+            state.desktop_entry = normalize_desktop_id ((string) changed_properties["DesktopEntry"]);
+        } else if ("DesktopEntry" in invalidated_properties) {
+            state.desktop_entry = null;
+        }
+
+        if ("CanRaise" in changed_properties) {
+            state.can_raise = (bool) changed_properties["CanRaise"];
+        } else if ("CanRaise" in invalidated_properties) {
+            state.can_raise = false;
+        }
+    }
+
+    private static string? normalize_desktop_id (string? desktop_entry) {
+        if (desktop_entry == null) {
+            return null;
+        }
+
+        var trimmed = desktop_entry.strip ();
+        if (trimmed == "") {
+            return null;
+        }
+
+        return trimmed.has_suffix (".desktop") ? trimmed : "%s.desktop".printf (trimmed);
+    }
+
+    private static string? derive_desktop_id_from_bus_name (string bus_name) {
+        if (!bus_name.has_prefix (MPRIS_PREFIX)) {
+            return null;
+        }
+
+        var candidate = bus_name.substring (MPRIS_PREFIX.length);
+        if (candidate == null || candidate == "") {
+            return null;
+        }
+
+        var instance_index = candidate.index_of (".instance");
+        if (instance_index > 0) {
+            candidate = candidate[0:instance_index];
+        }
+
+        return normalize_desktop_id (candidate);
+    }
+
+    private static AppInfo? find_app_info (string desktop_id) {
+        foreach (var app_info in AppInfo.get_all ()) {
+            if (app_info.get_id () == desktop_id) {
+                return app_info;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? resolve_desktop_id (PlayerState state) {
+        return state.desktop_entry ?? derive_desktop_id_from_bus_name (state.bus_name);
+    }
+
+    private static string normalize_identifier_for_match (string? value) {
+        if (value == null) {
+            return "";
+        }
+
+        var normalized = value.strip ().down ();
+        if (normalized.has_suffix (".desktop")) {
+            normalized = normalized[0:normalized.length - 8];
+        }
+
+        return normalized;
+    }
+
+    private static bool matches_identifier (Window window, string identifier) {
+        if (identifier == "") {
+            return false;
+        }
+
+        var app_id = normalize_identifier_for_match (window.app_id);
+        var sandboxed_app_id = normalize_identifier_for_match (window.sandboxed_app_id);
+        var wm_class = normalize_identifier_for_match (window.wm_class);
+
+        return app_id == identifier ||
+            sandboxed_app_id == identifier ||
+            wm_class == identifier ||
+            app_id.contains (identifier) ||
+            sandboxed_app_id.contains (identifier) ||
+            wm_class.contains (identifier);
+    }
+
+    private static GLib.GenericArray<Window> get_windows_for_state (PlayerState state) {
+        var matching_windows = new GLib.GenericArray<Window> ();
+        var desktop_identifier = normalize_identifier_for_match (resolve_desktop_id (state));
+        var bus_identifier = normalize_identifier_for_match (derive_desktop_id_from_bus_name (state.bus_name));
+
+        foreach (var window in WindowSystem.get_default ().windows) {
+            if (matches_identifier (window, desktop_identifier) ||
+                matches_identifier (window, bus_identifier)) {
+                matching_windows.add (window);
+            }
+        }
+
+        return matching_windows;
+    }
+
+    private static bool focus_existing_player_window (PlayerState state) {
+        var window_system = WindowSystem.get_default ();
+        var desktop_integration = window_system.desktop_integration;
+        if (desktop_integration == null) {
+            return false;
+        }
+
+        var windows = get_windows_for_state (state);
+        if (windows.length == 0) {
+            return false;
+        }
+
+        Window? preferred_window = null;
+        foreach (var window in windows) {
+            if (window.has_focus) {
+                return true;
+            }
+
+            if (preferred_window == null || (preferred_window.is_hidden && !window.is_hidden)) {
+                preferred_window = window;
+            }
+        }
+
+        if (preferred_window == null) {
+            preferred_window = windows[0];
+        }
+
+        desktop_integration.focus_window.begin (preferred_window.uid);
+        return true;
+    }
+
+    private static bool hide_player_windows (PlayerState state) {
+        var desktop_integration = WindowSystem.get_default ().desktop_integration;
+        if (desktop_integration == null) {
+            return false;
+        }
+
+        var windows = get_windows_for_state (state);
+        if (windows.length == 0) {
+            return false;
+        }
+
+        Window? focused_visible = null;
+        Window? visible_target = null;
+        foreach (var window in windows) {
+            if (window.is_hidden) {
+                continue;
+            }
+
+            if (visible_target == null) {
+                visible_target = window;
+            }
+
+            if (window.has_focus) {
+                focused_visible = window;
+                break;
+            }
+        }
+
+        if (visible_target == null) {
+            // Already hidden.
+            return false;
+        }
+
+        if (focused_visible != null) {
+            return GalaDBus.minimize_current_window ();
+        }
+
+        desktop_integration.focus_window.begin (visible_target.uid, (obj, res) => {
+            try {
+                desktop_integration.focus_window.end (res);
+            } catch (Error e) {
+                debug ("Couldn't focus player window before minimizing: %s", e.message);
+                return;
+            }
+
+            Timeout.add (90, () => {
+                GalaDBus.minimize_current_window ();
+                return Source.REMOVE;
+            });
+        });
+
+        return true;
+    }
+
+    private static void launch_player_from_desktop_id (string? desktop_id, PlayerState state) {
+        if (desktop_id == null) {
+            debug ("Couldn't resolve desktop entry for %s", state.bus_name);
+            return;
+        }
+
+        var app_info = find_app_info (desktop_id);
+        if (app_info == null) {
+            debug ("Couldn't find AppInfo for %s", desktop_id);
+            return;
+        }
+
+        var display = Gdk.Display.get_default ();
+        if (display == null) {
+            return;
+        }
+
+        try {
+            var context = display.get_app_launch_context ();
+            app_info.launch (null, context);
+        } catch (Error e) {
+            warning ("Failed to open player app %s: %s", desktop_id, e.message);
+        }
     }
 
     private static string? lookup_string (GLib.Variant dict, string key) {
